@@ -30,6 +30,20 @@ export const BUSES = [
     position: { lat: 17.6572, lng: 75.9060 },
     speedKmph: 35,
   },
+  {
+    id: 'bus-505',
+    name: 'Bus 505 - Balives ↔ Bus Stand',
+    routeStops: ['stop-2', 'stop-5'],
+    position: { lat: 17.6760, lng: 75.9015 },
+    speedKmph: 26,
+  },
+  {
+    id: 'bus-606',
+    name: 'Bus 606 - Kanna Chowk ↔ Tilak Chowk',
+    routeStops: ['stop-1', 'stop-4'],
+    position: { lat: 17.6765, lng: 75.9105 },
+    speedKmph: 27,
+  },
 ]
 
 

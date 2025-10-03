@@ -1,0 +1,13 @@
+.adminWrap { max-width: 1200px; margin: 1rem auto; padding: 0 1rem 1rem; }
+.adminGrid { display:grid; grid-template-columns: 380px 1fr; gap: 1rem; }
+.card { border:1px solid #2a2a2a; background:#121212; border-radius:12px; padding:1rem; }
+.title { margin:0 0 .5rem 0; }
+.badge { display:inline-flex; align-items:center; gap:.35rem; padding:.15rem .5rem; border-radius:999px; font-size:.8rem; border:1px solid #2a2a2a; }
+.badge.ok { color:#22c55e; border-color:rgba(34,197,94,.25); background:rgba(34,197,94,.08) }
+.badge.warn { color:#f59e0b; border-color:rgba(245,158,11,.25); background:rgba(245,158,11,.08) }
+.table { width:100%; border-collapse: collapse; border:1px solid #2a2a2a; border-radius:12px; overflow:hidden; }
+.table thead th { background:#151515; color:#eaeaea; text-align:left; padding:.75rem .9rem; border-bottom:1px solid #2a2a2a; }
+.table tbody td { padding:.75rem .9rem; border-bottom:1px solid #232323; }
+.mapBox { border:1px solid #2a2a2a; border-radius:12px; overflow:hidden; height: 420px; }
+
+

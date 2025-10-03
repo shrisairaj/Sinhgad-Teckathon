@@ -1,9 +1,9 @@
 .container {
   display: grid;
   gap: 1rem;
-  padding: 1rem;
-  max-width: 1280px;
-  margin: 0 auto;
+  padding: 0 1rem 1rem;
+  max-width: none;
+  margin: 0;
 }
 
 .hero {
@@ -21,28 +21,13 @@
   padding: 1rem;
 }
 
-.marquee {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0.25rem;
-  display: flex;
-  gap: 2rem;
-  opacity: 0.5;
-  pointer-events: none;
-  overflow: hidden;
-}
+.marquee { display: none; }
 
-.busRow {
-  display: inline-flex;
-  gap: 2rem;
-  animation: slide 14s linear infinite;
-}
+.busRow { display: none; }
 
-@keyframes slide {
-  0% { transform: translateX(-10%); }
-  100% { transform: translateX(-110%); }
-}
+.busIcon { display: none; }
+
+@keyframes slide {}
 
 .header {
   display: flex;
@@ -119,4 +104,86 @@
   100% { background-position: 0 0; }
 }
 
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #2c2c2c;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.table thead th {
+  background: #151515;
+  color: #eaeaea;
+  text-align: left;
+  font-weight: 600;
+  padding: 0.75rem 0.9rem;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.table tbody td {
+  padding: 0.75rem 0.9rem;
+  border-bottom: 1px solid #232323;
+}
+
+.table tbody tr:hover td {
+  background: rgba(100,108,255,0.06);
+}
+
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  border: 1px solid transparent;
+}
+.badge.on {
+  color: #22c55e;
+  border-color: rgba(34,197,94,0.25);
+  background: rgba(34,197,94,0.08);
+}
+.badge.delayed {
+  color: #f59e0b;
+  border-color: rgba(245,158,11,0.25);
+  background: rgba(245,158,11,0.08);
+}
+.badge.crowded {
+  color: #a78bfa;
+  border-color: rgba(167,139,250,0.25);
+  background: rgba(167,139,250,0.08);
+}
+
+.timePill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid #2a2a2a;
+  background: #111;
+}
+.timePill.highlight {
+  border-color: #3a3a6b;
+  box-shadow: 0 0 0 2px rgba(100,108,255,0.18);
+}
+
+.langToggle {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+.langBtn {
+  padding: 0.25rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid #2a2a2a;
+  background: #121212;
+  color: #ddd;
+  cursor: pointer;
+}
+.langBtn.active {
+  border-color: #646cff;
+  background: #191a2a;
+}
 
