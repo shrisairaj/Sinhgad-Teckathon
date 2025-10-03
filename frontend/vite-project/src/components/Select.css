@@ -39,6 +39,13 @@
   background: linear-gradient(180deg, rgba(30,30,30,0.9), rgba(15,15,15,0.9));
   border-radius: 14px;
   padding: 0.9rem 1rem;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  border-color: #3a3a6b;
+  box-shadow: 0 8px 24px rgba(100,108,255,0.12);
 }
 
 .muted {
@@ -47,6 +54,26 @@
 
 .sectionTitle {
   margin: 0.5rem 0 0.25rem;
+}
+
+.etaPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid #3a3a6b;
+  background: radial-gradient(240px 80px at 50% 50%, rgba(100,108,255,0.18), rgba(20,20,20,0.9));
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  box-shadow: inset 0 0 0 1px rgba(100,108,255,0.15);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  background: #747bff;
+  border-radius: 999px;
+  box-shadow: 0 0 8px #747bff;
 }
 
 

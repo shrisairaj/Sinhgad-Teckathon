@@ -30,6 +30,8 @@ body {
   min-height: 100vh;
 }
 
+/* Leaflet styles are imported in main.jsx to avoid flash-of-unstyled tiles */
+
 h1 {
   font-size: 3.2em;
   line-height: 1.1;

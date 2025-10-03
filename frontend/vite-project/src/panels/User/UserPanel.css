@@ -2,8 +2,46 @@
   display: grid;
   gap: 1rem;
   padding: 1rem;
-  max-width: 960px;
+  max-width: 1280px;
   margin: 0 auto;
+}
+
+.hero {
+  position: relative;
+  border: 1px solid #2c2c2c;
+  background: radial-gradient(1200px 240px at 50% 0%, rgba(100,108,255,0.15), rgba(20,20,20,0.9));
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.heroInner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+}
+
+.marquee {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0.25rem;
+  display: flex;
+  gap: 2rem;
+  opacity: 0.5;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.busRow {
+  display: inline-flex;
+  gap: 2rem;
+  animation: slide 14s linear infinite;
+}
+
+@keyframes slide {
+  0% { transform: translateX(-10%); }
+  100% { transform: translateX(-110%); }
 }
 
 .header {
@@ -34,6 +72,17 @@
   background: linear-gradient(180deg, rgba(30,30,30,0.9), rgba(15,15,15,0.9));
   border-radius: 16px;
   padding: 1rem;
+}
+
+.mapBox {
+  border: 1px solid #2c2c2c;
+  border-radius: 12px;
+  overflow: hidden;
+  height: 300px;
+}
+
+@media (min-width: 1000px) {
+  .mapBox { height: 480px; }
 }
 
 .mapStub {
