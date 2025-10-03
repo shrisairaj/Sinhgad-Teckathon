@@ -1,34 +1,31 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
+import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom'
 import './App.css'
+import Nav from './components/Nav.jsx'
+import UserPanel from './panels/User/UserPanel.jsx'
+
+function Placeholder({ title }) {
+  return (
+    <div style={{ padding: '2rem' }}>
+      <h2>{title}</h2>
+      <p>Coming soon.</p>
+    </div>
+  )
+}
 
 function App() {
-  const [count, setCount] = useState(0)
+  const location = useLocation()
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
+    <div>
+      <Nav />
+      <Routes location={location}>
+        <Route path="/" element={<Navigate to="/user" replace />} />
+        <Route path="/user" element={<UserPanel />} />
+        <Route path="/driver" element={<Placeholder title="Driver Panel" />} />
+        <Route path="/admin" element={<Placeholder title="Admin Panel" />} />
+        <Route path="*" element={<div style={{ padding: '2rem' }}><h2>Not Found</h2><Link to="/user">Go to User Panel</Link></div>} />
+      </Routes>
+    </div>
   )
 }
 

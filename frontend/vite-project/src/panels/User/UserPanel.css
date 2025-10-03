@@ -1,0 +1,73 @@
+.container {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.title {
+  margin: 0.5rem 0 0;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 900px) {
+  .grid {
+    grid-template-columns: 1.1fr 1fr;
+  }
+}
+
+.panel {
+  border: 1px solid #2c2c2c;
+  background: linear-gradient(180deg, rgba(30,30,30,0.9), rgba(15,15,15,0.9));
+  border-radius: 16px;
+  padding: 1rem;
+}
+
+.mapStub {
+  display: grid;
+  place-items: center;
+  border: 1px dashed #3a3a3a;
+  border-radius: 12px;
+  height: 260px;
+  color: #a0a0a0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rowGap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.skeleton {
+  height: 14px;
+  background: linear-gradient(90deg, #2a2a2a 25%, #3a3a3a 37%, #2a2a2a 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+  border-radius: 999px;
+}
+
+@keyframes shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+
+
