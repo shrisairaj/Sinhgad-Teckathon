@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import './UserPanel.css'
 import '../..//components/Select.css'
-import { BUS_STOPS } from '../../data/busStops'
-import { BUSES } from '../../data/buses'
+// Backend integration
+import { apiGet } from '../../utils/api'
+// Keep timetable static for now
 import { TIMETABLE } from '../../data/timetable'
 import { getCurrentPosition, haversineDistanceKm, formatDistanceKm, estimateEtaMinutes } from '../../utils/geo'
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet'
 import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 
 export default function UserPanel() {
   const [userLoc, setUserLoc] = useState(null)
+  const [stops, setStops] = useState([])
   const [locError, setLocError] = useState('')
   const [selectedStopId, setSelectedStopId] = useState('')
   const [loading, setLoading] = useState(true)
@@ -36,18 +39,36 @@ export default function UserPanel() {
     }
   }, [])
 
+  // Load stops from backend
+  useEffect(() => {
+    let cancelled = false
+    async function loadStops() {
+      try {
+        const data = await apiGet('/user/stops')
+        if (!cancelled) setStops(data || [])
+      } catch (e) {
+        if (!cancelled) setStops([])
+      }
+    }
+    loadStops()
+    return () => { cancelled = true }
+  }, [])
+
   const nearestStop = useMemo(() => {
     if (!userLoc) return null
     let best = null
-    for (const stop of BUS_STOPS) {
-      const d = haversineDistanceKm(userLoc, { lat: stop.lat, lng: stop.lng })
+    for (const stop of stops) {
+      const d = haversineDistanceKm(userLoc, { lat: stop.latitude ?? stop.lat, lng: stop.longitude ?? stop.lng })
       if (!best || d < best.distanceKm) best = { stop, distanceKm: d }
     }
     return best
-  }, [userLoc])
+  }, [userLoc, stops])
 
   useEffect(() => {
-    if (nearestStop && !selectedStopId) setSelectedStopId(nearestStop.stop.id)
+    if (nearestStop && !selectedStopId) {
+      const nid = nearestStop.stop.id || (nearestStop.stop.stopId ? `stop-${nearestStop.stop.stopId}` : '')
+      if (nid) setSelectedStopId(nid)
+    }
   }, [nearestStop, selectedStopId])
 
   const STOP_NAME_I18N = useMemo(() => ({
@@ -76,99 +97,71 @@ export default function UserPanel() {
 
   const getStopName = (stopId) => {
     const pack = STOP_NAME_I18N[lang] || STOP_NAME_I18N.en
-    return pack[stopId] || BUS_STOPS.find((s) => s.id === stopId)?.name || stopId
+    const found = stops.find((s) => (s.id || `stop-${s.stopId}`) === stopId || s.stopId === stopId)
+    return pack[stopId] || found?.name || stopId
   }
 
-  const stopOptions = useMemo(() => BUS_STOPS.map((s) => ({ value: s.id, label: getStopName(s.id) })), [lang])
-  const selectedStop = BUS_STOPS.find((s) => s.id === selectedStopId) || null
-  const sourceStop = BUS_STOPS.find((s) => s.id === sourceId) || null
-  const destStop = BUS_STOPS.find((s) => s.id === destId) || null
+  const normalizedStops = useMemo(() => stops.map((s) => ({
+    id: s.id || `stop-${s.stopId}`,
+    name: s.name,
+    lat: s.latitude ?? s.lat,
+    lng: s.longitude ?? s.lng,
+  })), [stops])
 
-  const stopIdToName = useMemo(() => BUS_STOPS.reduce((acc, s) => { acc[s.id] = getStopName(s.id); return acc }, {}), [lang])
+  const stopOptions = useMemo(() => normalizedStops.map((s) => ({ value: s.id, label: s.name })), [normalizedStops])
+  const selectedStop = normalizedStops.find((s) => s.id === selectedStopId) || null
+  const sourceStop = normalizedStops.find((s) => s.id === sourceId) || null
+  const destStop = normalizedStops.find((s) => s.id === destId) || null
 
-  const busesServing = useMemo(() => {
-    if (!selectedStop) return []
-    return BUSES.filter((b) => b.routeStops.includes(selectedStop.id)).map((bus) => {
-      const firstStopName = stopIdToName[bus.routeStops[0]] || bus.routeStops[0]
-      const lastStopName = stopIdToName[bus.routeStops[bus.routeStops.length - 1]] || bus.routeStops[bus.routeStops.length - 1]
-      const displayName = `${firstStopName} ↔ ${lastStopName}`
-      return { ...bus, displayName }
-    })
-  }, [selectedStop, stopIdToName])
+  const stopIdToName = useMemo(() => normalizedStops.reduce((acc, s) => { acc[s.id] = s.name; return acc }, {}), [normalizedStops])
 
-  const [routeInfo, setRouteInfo] = useState({})
+  const [arrivals, setArrivals] = useState([])
 
   useEffect(() => {
-    if (!selectedStop || busesServing.length === 0) {
-      setRouteInfo({})
-      return
-    }
     let cancelled = false
-    async function fetchAll() {
-      const results = {}
-      await Promise.all(busesServing.map(async (bus) => {
-        try {
-          const url = `https://router.project-osrm.org/route/v1/driving/${bus.position.lng},${bus.position.lat};${selectedStop.lng},${selectedStop.lat}?overview=false`
-          const res = await fetch(url)
-          if (!res.ok) throw new Error('routing failed')
-          const data = await res.json()
-          const meters = data?.routes?.[0]?.distance
-          if (typeof meters === 'number') {
-            const distanceKm = meters / 1000
-            const etaMin = Math.max(0, Math.round((distanceKm / Math.max(1, bus.speedKmph)) * 60))
-            results[bus.id] = { distanceKm, etaMin }
-            return
-          }
-          throw new Error('no route')
-        } catch (e) {
-          const distanceKm = haversineDistanceKm(bus.position, { lat: selectedStop.lat, lng: selectedStop.lng })
-          const etaMin = estimateEtaMinutes(distanceKm, bus.speedKmph)
-          results[bus.id] = { distanceKm, etaMin }
-        }
-      }))
-      if (!cancelled) setRouteInfo(results)
+    async function loadArrivals() {
+      if (!selectedStop) { setArrivals([]); return }
+      try {
+        const data = await apiGet(`/user/arrivals?stop=${encodeURIComponent(selectedStop.name)}`)
+        const items = (data?.arrivals || []).map((a) => ({
+          id: `bus-${a.busId}`,
+          name: `${a.routeNumber || 'Route'} • ${a.registrationNumber || a.busId}`,
+          position: { lat: a.latitude, lng: a.longitude },
+          etaMin: a.etaMinutes,
+          distanceKm: (a.distanceMeters || 0) / 1000,
+          routeStops: [],
+        }))
+        if (!cancelled) setArrivals(items)
+      } catch (e) {
+        if (!cancelled) setArrivals([])
+      }
     }
-    fetchAll()
+    loadArrivals()
     return () => { cancelled = true }
-  }, [selectedStop, busesServing])
+  }, [selectedStop])
 
-  const arrivingBuses = useMemo(() => {
-    if (!selectedStop) return []
-    return busesServing
-      .map((bus) => {
-        const info = routeInfo[bus.id]
-        if (info) return { ...bus, distanceKm: info.distanceKm, etaMin: info.etaMin }
-        const fallbackDistanceKm = haversineDistanceKm(bus.position, { lat: selectedStop.lat, lng: selectedStop.lng })
-        const fallbackEta = estimateEtaMinutes(fallbackDistanceKm, bus.speedKmph)
-        return { ...bus, distanceKm: fallbackDistanceKm, etaMin: fallbackEta }
-      })
-      .sort((a, b) => a.etaMin - b.etaMin)
-  }, [selectedStop, busesServing, routeInfo])
+  // removed legacy static-bus routing logic; arrivals now from backend
 
-  const arrivingForSelection = useMemo(() => {
-    if (!sourceStop || !destStop) return arrivingBuses
-    const allowedIds = new Set(
-      BUSES.filter((b) => {
-        const si = b.routeStops.indexOf(sourceStop.id)
-        const di = b.routeStops.indexOf(destStop.id)
-        return si !== -1 && di !== -1 && si < di
-      }).map((b) => b.id)
-    )
-    return arrivingBuses.filter((b) => allowedIds.has(b.id))
-  }, [arrivingBuses, sourceStop, destStop])
+  const arrivingBuses = useMemo(() => arrivals.sort((a,b)=>a.etaMin-b.etaMin), [arrivals])
 
-  const busesForSegment = useMemo(() => {
-    if (!sourceStop || !destStop) return []
-    return BUSES.filter((b) => {
-      const si = b.routeStops.indexOf(sourceStop.id)
-      const di = b.routeStops.indexOf(destStop.id)
-      return si !== -1 && di !== -1 && si < di
-    }).map((bus)=>{
-      const firstStopName = stopIdToName[bus.routeStops[0]]
-      const lastStopName = stopIdToName[bus.routeStops[bus.routeStops.length-1]]
-      return { ...bus, displayName: `${firstStopName} ↔ ${lastStopName}` }
-    })
-  }, [sourceStop, destStop, stopIdToName])
+  const arrivingForSelection = useMemo(() => arrivingBuses, [arrivingBuses])
+
+  const [journeyOptions, setJourneyOptions] = useState([])
+  useEffect(() => {
+    let cancelled = false
+    async function loadJourney() {
+      if (!sourceStop || !destStop) { setJourneyOptions([]); return }
+      try {
+        const data = await apiGet(`/user/journey?source=${encodeURIComponent(sourceStop.name)}&destination=${encodeURIComponent(destStop.name)}`)
+        const opts = (data?.options || []).map((o) => ({ id: `bus-${o.busId}`, displayName: o.routeNumber || 'Route', etaMin: o.etaToSourceMinutes }))
+        if (!cancelled) setJourneyOptions(opts)
+      } catch (e) {
+        if (!cancelled) setJourneyOptions([])
+      }
+    }
+    loadJourney()
+    return () => { cancelled = true }
+  }, [sourceStop, destStop])
 
   const timetableEntries = useMemo(() => {
     if (!selectedStop) return []
@@ -179,46 +172,11 @@ export default function UserPanel() {
     return timetableEntries.reduce((sum, e) => sum + (e.times?.length || 0), 0)
   }, [timetableEntries])
 
-  const busProgress = useMemo(() => {
-    return BUSES.map((bus) => {
-      const routeStops = bus.routeStops
-      if (!routeStops || routeStops.length === 0) {
-        return { id: bus.id, displayName: bus.name, currentStopName: '-', nextStopName: '-', etaMinNext: null }
-      }
-      let bestIdx = 0
-      let bestDist = Infinity
-      for (let i = 0; i < routeStops.length; i++) {
-        const stop = BUS_STOPS.find((s) => s.id === routeStops[i])
-        if (!stop) continue
-        const d = haversineDistanceKm(bus.position, { lat: stop.lat, lng: stop.lng })
-        if (d < bestDist) { bestDist = d; bestIdx = i }
-      }
-      const currentStopId = routeStops[bestIdx]
-      const nextStopId = routeStops[Math.min(bestIdx + 1, routeStops.length - 1)]
-      const firstStopName = stopIdToName[routeStops[0]] || routeStops[0]
-      const lastStopName = stopIdToName[routeStops[routeStops.length - 1]] || routeStops[routeStops.length - 1]
-      const displayName = `${firstStopName} ↔ ${lastStopName}`
-      let etaMinNext = null
-      if (bestIdx + 1 < routeStops.length) {
-        const nextStop = BUS_STOPS.find((s) => s.id === nextStopId)
-        if (nextStop) {
-          const dNext = haversineDistanceKm(bus.position, { lat: nextStop.lat, lng: nextStop.lng })
-          etaMinNext = estimateEtaMinutes(dNext, bus.speedKmph)
-        }
-      }
-      return {
-        id: bus.id,
-        displayName,
-        currentStopName: stopIdToName[currentStopId] || currentStopId,
-        nextStopName: bestIdx + 1 < routeStops.length ? (stopIdToName[nextStopId] || nextStopId) : '-',
-        etaMinNext,
-      }
-    })
-  }, [stopIdToName])
+  // removed legacy busProgress based on static data
 
   const userIcon = useMemo(() => L.divIcon({ className: '', html: '🧍', iconSize: [24,24], iconAnchor: [12,12] }), [])
   const busIcon = useMemo(() => L.divIcon({ className: '', html: '🚌', iconSize: [24,24], iconAnchor: [12,12] }), [])
-  const stopIcon = useMemo(() => L.divIcon({ className: '', html: '📍', iconSize: [24,24], iconAnchor: [12,12] }), [])
+  const stopIcon = useMemo(() => L.divIcon({ className: '', html: '🚏', iconSize: [24,24], iconAnchor: [12,12] }), [])
 
   function FitToBounds({ points }) {
     const map = useMap()
@@ -408,13 +366,13 @@ export default function UserPanel() {
                   </tr>
                 </thead>
                 <tbody>
-                  {busProgress.map((bp) => (
+                  {journeyOptions.map((bp) => (
                     <tr key={bp.id}>
                       <td>{bp.id}</td>
                       <td>{bp.displayName}</td>
-                      <td>{bp.currentStopName}</td>
-                      <td>{bp.nextStopName}</td>
-                      <td>{bp.etaMinNext != null ? new Date(Date.now() + bp.etaMinNext * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}</td>
+                      <td>-</td>
+                      <td>-</td>
+                      <td>{bp.etaMin != null ? new Date(Date.now() + bp.etaMin * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}</td>
                     </tr>
                   ))}
                 </tbody>

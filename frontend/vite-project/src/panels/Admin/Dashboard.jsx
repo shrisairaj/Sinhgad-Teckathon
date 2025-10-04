@@ -2,26 +2,98 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import { useMemo, useState, useEffect } from 'react'
+import { apiGet, apiPost } from '../../utils/api'
 import './admin.css'
-import { BUSES } from '../../data/buses'
-import { BUS_STOPS } from '../../data/busStops'
+// Backend-driven; remove static imports
 
 export default function AdminDashboard() {
   const busIcon = useMemo(() => L.divIcon({ className: '', html: '🚌', iconSize: [24,24], iconAnchor: [12,12] }), [])
-  const stopIcon = useMemo(() => L.divIcon({ className: '', html: '📍', iconSize: [24,24], iconAnchor: [12,12] }), [])
   const solapur = { lat: 17.6599, lng: 75.9064 }
   const [selectedBusId, setSelectedBusId] = useState('')
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
   const [activeDriver, setActiveDriver] = useState(null)
+  const [active, setActive] = useState([])
+  const [showRouteManager, setShowRouteManager] = useState(false)
+  const [tomorrowSchedule, setTomorrowSchedule] = useState({ routes: [] })
+  const [availableResources, setAvailableResources] = useState({ buses: [], routes: [], drivers: [] })
 
-  const rows = [
-    { id: 'SOL-001', shift: 'Morning', status: 'On Time', driver: { name: 'Ravi Patil', phone: '+91 98765 43210', license: 'MH-12-2025-091', experienceYears: 6, photoUrl: 'https://randomuser.me/api/portraits/men/31.jpg' } },
-    { id: 'SOL-002', shift: 'Afternoon', status: 'Delayed', driver: { name: 'Sunita Kale', phone: '+91 98220 11122', license: 'MH-13-2023-442', experienceYears: 4, photoUrl: 'https://randomuser.me/api/portraits/women/44.jpg' } },
-    { id: 'PUN-078', shift: 'Evening', status: 'On Time', driver: { name: 'Imran Shaikh', phone: '+91 90040 55566', license: 'MH-14-2021-778', experienceYears: 8, photoUrl: 'https://randomuser.me/api/portraits/men/12.jpg' } },
-    { id: 'MUM-105', shift: 'Night', status: 'End of Service', driver: { name: 'Kiran Jadhav', phone: '+91 99220 33344', license: 'MH-01-2019-221', experienceYears: 10, photoUrl: 'https://randomuser.me/api/portraits/men/55.jpg' } },
-  ]
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const data = await apiGet('/admin/active-buses')
+        if (!cancelled) setActive(data || [])
+      } catch (e) {
+        if (!cancelled) setActive([])
+      }
+    }
+    load()
+    const t = setInterval(load, 5000)
+    return () => { cancelled = true; clearInterval(t) }
+  }, [])
 
-  const stopById = useMemo(() => BUS_STOPS.reduce((a,s)=>{a[s.id]=s;return a},{}), [])
+  // Load tomorrow's schedule and resources
+  useEffect(() => {
+    let cancelled = false
+    async function loadSchedule() {
+      try {
+        const [schedule, resources] = await Promise.all([
+          apiGet('/admin/tomorrow-schedule'),
+          apiGet('/admin/available-resources')
+        ])
+        if (!cancelled) {
+          console.log('=== ADMIN PANEL DEBUG ===')
+          console.log('Loaded schedule:', schedule)
+          console.log('Loaded resources:', resources)
+          if (resources?.drivers) {
+            console.log('Available drivers:')
+            resources.drivers.forEach((driver, index) => {
+              console.log(`Driver ${index}:`, driver)
+              console.log(`  - driverId: ${driver.driverId} (type: ${typeof driver.driverId})`)
+              console.log(`  - username: ${driver.username}`)
+              console.log(`  - name: ${driver.name}`)
+            })
+          }
+          setTomorrowSchedule(schedule || { routes: [] })
+          setAvailableResources(resources || { buses: [], routes: [], drivers: [] })
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setTomorrowSchedule({ routes: [] })
+          setAvailableResources({ buses: [], routes: [], drivers: [] })
+        }
+      }
+    }
+    loadSchedule()
+    return () => { cancelled = true }
+  }, [])
+
+  const rows = active.map(a => {
+    // Find the driver assignment for this bus
+    const assignment = tomorrowSchedule.routes?.find(r => r.busId === a.busId)
+    const driver = assignment?.driver || null
+    
+    return { 
+      id: a.busId, 
+      shift: a.routeNumber || '-', 
+      status: a.status || '-', 
+      driver: driver ? {
+        name: driver.name || 'Unknown',
+        phone: driver.phone || 'Not provided',
+        license: driver.license || 'Not provided',
+        experienceYears: driver.experienceYears || 'Unknown',
+        photoUrl: driver.photoUrl || ''
+      } : {
+        name: 'No driver assigned',
+        phone: '-',
+        license: '-',
+        experienceYears: '-',
+        photoUrl: ''
+      }
+    }
+  })
+
+  // Removed static stop map; using backend live data instead
 
   function FitToBounds({ points }) {
     const map = useMap()
@@ -57,47 +129,77 @@ export default function AdminDashboard() {
     return <Polyline positions={coords} pathOptions={{ color: '#3b82f6', weight: 4, opacity: 0.9 }} />
   }
 
+  const addRouteAssignment = () => {
+    const newRoute = {
+      routeId: availableResources.routes[0]?.routeId || '',
+      busId: availableResources.buses[0]?.busId || '',
+      driverId: availableResources.drivers[0]?.driverId || '',
+      startTime: '08:00',
+      endTime: '18:00',
+      isActive: true
+    }
+    setTomorrowSchedule(prev => ({
+      ...prev,
+      routes: [...prev.routes, newRoute]
+    }))
+  }
+
+  const updateRouteAssignment = (index, field, value) => {
+    setTomorrowSchedule(prev => ({
+      ...prev,
+      routes: prev.routes.map((route, i) => 
+        i === index ? { ...route, [field]: value } : route
+      )
+    }))
+  }
+
+  const removeRouteAssignment = (index) => {
+    setTomorrowSchedule(prev => ({
+      ...prev,
+      routes: prev.routes.filter((_, i) => i !== index)
+    }))
+  }
+
+  const saveTomorrowSchedule = async () => {
+    try {
+      console.log('Saving schedule:', tomorrowSchedule.routes)
+      await apiPost('/admin/tomorrow-schedule', { routes: tomorrowSchedule.routes })
+      alert('Tomorrow\'s schedule updated successfully!')
+      setShowRouteManager(false)
+    } catch (e) {
+      console.error('Failed to save schedule:', e)
+      alert('Failed to update schedule')
+    }
+  }
+
   return (
     <div className="adminWrap">
-      <h2 className="title">Dashboard</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <h2 className="title">Dashboard</h2>
+        <button 
+          className="btn" 
+          onClick={() => setShowRouteManager(true)}
+          style={{ padding: '0.5rem 1rem' }}
+        >
+          Manage Tomorrow's Routes
+        </button>
+      </div>
       <div className="adminGrid">
         <div className="card">
           <h3 className="title">Live Map</h3>
           <div className="mapBox">
             <MapContainer style={{ height: '100%' }} center={[solapur.lat, solapur.lng]} zoom={13} scrollWheelZoom>
               <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution="&copy; OpenStreetMap contributors &copy; CARTO" />
-              {BUS_STOPS.slice(0,4).map((s)=> (
-                <Marker key={s.id} position={[s.lat, s.lng]} icon={stopIcon}>
-                  <Popup>{s.name}</Popup>
+              {active.map((a)=> (
+                <Marker key={a.busId} position={[a.latitude, a.longitude]} icon={busIcon}>
+                  <Popup>
+                    <div>
+                      <div>Bus #{a.busId}</div>
+                      <div className="muted">{a.routeNumber || a.routeName || ''} • {a.status}{a.issue ? ` • ${a.issue.replaceAll('_',' ')}` : ''}</div>
+                    </div>
+                  </Popup>
                 </Marker>
               ))}
-              {BUSES.map((b)=> (
-                <Marker key={b.id} position={[b.position.lat, b.position.lng]} icon={busIcon} eventHandlers={{ click: ()=>setSelectedBusId(b.id) }}>
-                  <Popup>{b.name}</Popup>
-                </Marker>
-              ))}
-              {selectedBusId && (()=>{
-                const b = BUSES.find(x=>x.id===selectedBusId)
-                if (!b) return null
-                // find nearest stop index on this bus route
-                let bestIdx = 0
-                let bestDist = Infinity
-                for (let i=0;i<b.routeStops.length;i++){
-                  const s = stopById[b.routeStops[i]]
-                  if (!s) continue
-                  const d = L.latLng(b.position.lat, b.position.lng).distanceTo(L.latLng(s.lat, s.lng))
-                  if (d < bestDist){ bestDist = d; bestIdx = i }
-                }
-                const nextIdx = Math.min(bestIdx + 1, b.routeStops.length - 1)
-                const nextStop = stopById[b.routeStops[nextIdx]]
-                if (!nextStop) return null
-                return (
-                  <>
-                    <RouteLine from={{lat:b.position.lat,lng:b.position.lng}} to={{lat:nextStop.lat,lng:nextStop.lng}} />
-                    <FitToBounds points={[b.position, {lat:nextStop.lat,lng:nextStop.lng}]} />
-                  </>
-                )
-              })()}
             </MapContainer>
           </div>
         </div>
@@ -118,7 +220,7 @@ export default function AdminDashboard() {
                   <td>{r.id}</td>
                   <td>{r.shift}</td>
                   <td>
-                    <span className={`badge ${r.status==='On Time'?'ok':r.status==='Delayed'?'warn':''}`}>{r.status}</span>
+                    <span className={`badge ${r.status==='running'?'ok':r.status==='delayed' || r.status==='delay'?'warn':''}`}>{r.status}</span>
                   </td>
                   <td>
                     <button
@@ -171,7 +273,7 @@ export default function AdminDashboard() {
                     <div style={{ display:'grid', gridTemplateColumns:'140px 1fr', gap: '.5rem' }}>
                       <div style={{ color:'#9ca3af' }}>Status</div>
                       <div>
-                        <span className={`badge ${activeDriver.status==='On Time'?'ok':activeDriver.status==='Delayed'?'warn':''}`}>{activeDriver.status}</span>
+                        <span className={`badge ${activeDriver.status==='running'?'ok':activeDriver.status==='delay' || activeDriver.status==='delayed'?'warn':''}`}>{activeDriver.status}</span>
                       </div>
                     </div>
                   </div>
@@ -197,6 +299,118 @@ export default function AdminDashboard() {
             ) : (
               <p>No driver selected.</p>
             )}
+          </div>
+        </div>
+      )}
+      {showRouteManager && (
+        <div className="modalOverlay" onClick={() => setShowRouteManager(false)}>
+          <div className="modalCard" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0 }}>Tomorrow's Route Schedule</h3>
+              <button onClick={() => setShowRouteManager(false)} style={{ background: 'transparent', color: '#eaeaea', border: '1px solid #2a2a2a', borderRadius: 8, padding: '.25rem .5rem', cursor: 'pointer' }}>Close</button>
+            </div>
+            
+            <div style={{ marginBottom: '1rem' }}>
+              <button className="btn" onClick={addRouteAssignment} style={{ marginBottom: '1rem' }}>
+                Add Route Assignment
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gap: '1rem' }}>
+              {tomorrowSchedule.routes.map((route, index) => (
+                <div key={index} style={{ border: '1px solid #2a2a2a', borderRadius: 8, padding: '1rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '1rem', alignItems: 'end' }}>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', color: '#9ca3af' }}>Route</label>
+                      <select 
+                        value={route.routeId} 
+                        onChange={(e) => updateRouteAssignment(index, 'routeId', e.target.value)}
+                        style={{ width: '100%', padding: '0.5rem', background: '#1f2937', color: '#eaeaea', border: '1px solid #2a2a2a', borderRadius: 4 }}
+                      >
+                        {availableResources.routes.map(r => (
+                          <option key={r.routeId} value={r.routeId}>{r.routeNumber} - {r.routeName}</option>
+                        ))}
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', color: '#9ca3af' }}>Bus</label>
+                      <select 
+                        value={route.busId} 
+                        onChange={(e) => updateRouteAssignment(index, 'busId', e.target.value)}
+                        style={{ width: '100%', padding: '0.5rem', background: '#1f2937', color: '#eaeaea', border: '1px solid #2a2a2a', borderRadius: 4 }}
+                      >
+                        {availableResources.buses.map(b => (
+                          <option key={b.busId} value={b.busId}>{b.registrationNumber} - {b.model}</option>
+                        ))}
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', color: '#9ca3af' }}>Driver</label>
+                      <select 
+                        value={route.driverId} 
+                        onChange={(e) => updateRouteAssignment(index, 'driverId', e.target.value)}
+                        style={{ width: '100%', padding: '0.5rem', background: '#1f2937', color: '#eaeaea', border: '1px solid #2a2a2a', borderRadius: 4 }}
+                      >
+                        {availableResources.drivers.map(d => (
+                          <option key={d.driverId} value={d.driverId}>{d.name} ({d.username}) - ID: {d.driverId}</option>
+                        ))}
+                      </select>
+                    </div>
+                    
+                    <button 
+                      onClick={() => removeRouteAssignment(index)}
+                      style={{ padding: '0.5rem', background: '#7a2a2a', color: '#eaeaea', border: '1px solid #2a2a2a', borderRadius: 4, cursor: 'pointer' }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', color: '#9ca3af' }}>Start Time</label>
+                      <input 
+                        type="time" 
+                        value={route.startTime} 
+                        onChange={(e) => updateRouteAssignment(index, 'startTime', e.target.value)}
+                        style={{ width: '100%', padding: '0.5rem', background: '#1f2937', color: '#eaeaea', border: '1px solid #2a2a2a', borderRadius: 4 }}
+                      />
+                    </div>
+                    
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', color: '#9ca3af' }}>End Time</label>
+                      <input 
+                        type="time" 
+                        value={route.endTime} 
+                        onChange={(e) => updateRouteAssignment(index, 'endTime', e.target.value)}
+                        style={{ width: '100%', padding: '0.5rem', background: '#1f2937', color: '#eaeaea', border: '1px solid #2a2a2a', borderRadius: 4 }}
+                      />
+                    </div>
+                    
+                    <div style={{ display: 'flex', alignItems: 'end' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={route.isActive} 
+                          onChange={(e) => updateRouteAssignment(index, 'isActive', e.target.checked)}
+                        />
+                        Active
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+              <button className="btn" onClick={saveTomorrowSchedule}>
+                Save Schedule
+              </button>
+              <button className="btn alt" onClick={() => setShowRouteManager(false)}>
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
